@@ -7,7 +7,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildNode25BlockBanner, buildNodeTooOldBanner, MIN_NODE_MAJOR } from '../src/bin/node-version-check';
+import {
+  buildNode25BlockBanner,
+  buildNodeTooOldBanner,
+  isNodeVersionTooOld,
+  MIN_NODE_MAJOR,
+  MIN_NODE_VERSION,
+} from '../src/bin/node-version-check';
 
 describe('buildNode25BlockBanner', () => {
   it('embeds the reported Node version in the header', () => {
@@ -50,10 +56,17 @@ describe('buildNodeTooOldBanner', () => {
   });
 
   it('states the supported floor matching MIN_NODE_MAJOR', () => {
-    expect(MIN_NODE_MAJOR).toBe(20);
+    expect(MIN_NODE_MAJOR).toBe(22);
+    expect(MIN_NODE_VERSION).toBe('22.5.0');
     expect(buildNodeTooOldBanner('18.0.0')).toContain(
-      `requires Node.js ${MIN_NODE_MAJOR} or newer`
+      `requires Node.js ${MIN_NODE_VERSION} or newer`
     );
+  });
+
+  it('treats Node 22.4 as too old but accepts 22.5 and newer majors', () => {
+    expect(isNodeVersionTooOld('22.4.9')).toBe(true);
+    expect(isNodeVersionTooOld('22.5.0')).toBe(false);
+    expect(isNodeVersionTooOld('24.14.0')).toBe(false);
   });
 
   it('points users to Node 22 LTS via nvm and Homebrew', () => {

@@ -82,7 +82,7 @@ class CodexTarget implements AgentTarget {
     }
     const files: WriteResult['files'] = [];
 
-    files.push(writeMcpEntry());
+    files.push(writeMcpEntry(_opts.mcpLaunchConfig));
 
     // AGENTS.md gets the short marker-fenced CodeGraph block (#704):
     // subagents and non-MCP harnesses read AGENTS.md but never the MCP
@@ -133,20 +133,20 @@ class CodexTarget implements AgentTarget {
   }
 }
 
-function buildCodegraphBlock(): string {
-  const mcp = getMcpServerConfig();
+function buildCodegraphBlock(mcpLaunchConfig?: InstallOptions['mcpLaunchConfig']): string {
+  const mcp = getMcpServerConfig(mcpLaunchConfig);
   return buildTomlTable(TOML_HEADER, {
     command: mcp.command,
     args: mcp.args,
   });
 }
 
-function writeMcpEntry(): WriteResult['files'][number] {
+function writeMcpEntry(mcpLaunchConfig?: InstallOptions['mcpLaunchConfig']): WriteResult['files'][number] {
   const file = tomlConfigPath();
   const dir = path.dirname(file);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-  const block = buildCodegraphBlock();
+  const block = buildCodegraphBlock(mcpLaunchConfig);
   // Single read — `existing === ''` derives both "is the file empty
   // or absent" and "what was its content," avoiding a TOCTOU window
   // between two `fs.existsSync` calls.

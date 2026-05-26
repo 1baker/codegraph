@@ -75,6 +75,16 @@ export interface InstallOptions {
    * leaves it untouched. Targets without a prompt-hook concept ignore it.
    */
   promptHook?: boolean;
+  /**
+   * MCP launch command the orchestrator resolved for this installer run.
+   * Direct target tests and manual snippets omit it and fall back to
+   * `codegraph serve --mcp`.
+   */
+  mcpLaunchConfig?: {
+    type: 'stdio';
+    command: string;
+    args: string[];
+  };
 }
 
 export interface AgentTarget {

@@ -125,6 +125,15 @@ export function hashContent(content: string): string {
  */
 const MAX_FILE_SIZE = 1024 * 1024;
 
+function fileSizeExceededError(filePath: string, size: number): ExtractionError {
+  return {
+    message: `File exceeds max size (${size} > ${MAX_FILE_SIZE})`,
+    filePath,
+    severity: 'warning',
+    code: 'size_exceeded',
+  };
+}
+
 /**
  * Directory names that are dependency, build, cache, or tooling output across the
  * languages/frameworks CodeGraph supports — curated from the canonical
@@ -1758,14 +1767,11 @@ export class ExtractionOrchestrator {
         // useful symbols. The single-file extractFile path already enforces
         // this; the bulk path used to silently skip the check.
         if (stats.size > MAX_FILE_SIZE) {
+          const sizeError = fileSizeExceededError(filePath, stats.size);
+          this.storeSkippedFileRecord(filePath, content, stats, sizeError);
           processed++;
           filesSkipped++;
-          errors.push({
-            message: `File exceeds max size (${stats.size} > ${MAX_FILE_SIZE})`,
-            filePath,
-            severity: 'warning',
-            code: 'size_exceeded',
-          });
+          errors.push(sizeError);
           onProgress?.({ phase: 'parsing', current: processed, total });
           continue;
         }
@@ -2049,18 +2055,13 @@ export class ExtractionOrchestrator {
 
     // Check file size
     if (stats.size > MAX_FILE_SIZE) {
+      const sizeError = fileSizeExceededError(relativePath, stats.size);
+      this.storeSkippedFileRecord(relativePath, content, stats, sizeError);
       return {
         nodes: [],
         edges: [],
         unresolvedReferences: [],
-        errors: [
-          {
-            message: `File exceeds max size (${stats.size} > ${MAX_FILE_SIZE})`,
-            filePath: relativePath,
-            severity: 'warning',
-            code: 'size_exceeded',
-          },
-        ],
+        errors: [sizeError],
         durationMs: 0,
       };
     }
@@ -2219,6 +2220,37 @@ export class ExtractionOrchestrator {
       errors: result.errors.length > 0 ? result.errors : undefined,
     };
     this.queries.upsertFile(fileRecord);
+  }
+
+  /**
+   * Record a source file that CodeGraph intentionally skipped, such as an
+   * oversized generated file. Storing the file hash makes future status/sync
+   * runs stable: the file can be "up to date" while still carrying a warning.
+   */
+  private storeSkippedFileRecord(
+    filePath: string,
+    content: string,
+    stats: fs.Stats,
+    error: ExtractionError
+  ): void {
+    const language = detectLanguage(filePath, content);
+    if (!isLanguageSupported(language)) return;
+
+    const existingFile = this.queries.getFileByPath(filePath);
+    if (existingFile) {
+      this.queries.deleteFile(filePath);
+    }
+
+    this.queries.upsertFile({
+      path: filePath,
+      contentHash: hashContent(content),
+      language,
+      size: stats.size,
+      modifiedAt: stats.mtimeMs,
+      indexedAt: Date.now(),
+      nodeCount: 0,
+      errors: [error],
+    });
   }
 
   /**

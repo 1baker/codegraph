@@ -4003,6 +4003,8 @@ export class ToolHandler {
       } catch { /* closed instance — leave as is */ }
     }
     const stats = cg.getStats();
+    const skippedFiles = cg.getFiles()
+      .filter((file) => file.errors?.some((err) => err.code === 'size_exceeded'));
 
     // Warn when this index actually belongs to a different git working tree
     // (e.g. the server resolved up from a nested worktree to the main checkout).
@@ -4096,6 +4098,17 @@ export class ToolHandler {
         const ageMs = Math.max(0, now - p.lastSeenMs);
         const label = p.indexing ? 'indexing in progress' : 'pending sync';
         lines.push(`- ${p.path} (edited ${ageMs}ms ago, ${label})`);
+      }
+    }
+
+    if (skippedFiles.length > 0) {
+      lines.push('', '### Skipped Files:');
+      lines.push(`${skippedFiles.length} files are tracked as intentionally skipped.`);
+      for (const file of skippedFiles.slice(0, 5)) {
+        lines.push(`- ${file.path} (${file.size} bytes, size limit)`);
+      }
+      if (skippedFiles.length > 5) {
+        lines.push(`- ... ${skippedFiles.length - 5} more`);
       }
     }
 

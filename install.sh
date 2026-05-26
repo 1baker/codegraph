@@ -15,13 +15,65 @@
 #   CODEGRAPH_VERSION      release tag to install (default: latest)
 #   CODEGRAPH_INSTALL_DIR  bundle location   (default: ~/.codegraph)
 #   CODEGRAPH_BIN_DIR      symlink location  (default: ~/.local/bin)
+#   CODEGRAPH_DOWNLOAD_BASE release asset base URL
+#                            (default: https://github.com/colbymchenry/codegraph/releases/download)
 set -eu
 
 REPO="colbymchenry/codegraph"
 INSTALL_DIR="${CODEGRAPH_INSTALL_DIR:-$HOME/.codegraph}"
 BIN_DIR="${CODEGRAPH_BIN_DIR:-$HOME/.local/bin}"
+DOWNLOAD_BASE="${CODEGRAPH_DOWNLOAD_BASE:-https://github.com/$REPO/releases/download}"
+DOWNLOAD_BASE="${DOWNLOAD_BASE%/}"
+
+require_safe_install_dir() {
+  case "$INSTALL_DIR" in
+    ""|"/"|"/."|"."|".."|"$HOME"|"$HOME/"|"/home"|"/home/"|"/usr"|"/usr/"|"/usr/local"|"/usr/local/"|"/opt"|"/opt/"|"/tmp"|"/tmp/")
+      echo "codegraph: refusing unsafe CODEGRAPH_INSTALL_DIR='$INSTALL_DIR'." >&2
+      echo "codegraph: choose a dedicated directory such as \$HOME/.codegraph." >&2
+      exit 1
+      ;;
+  esac
+}
+
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    return 1
+  fi
+}
+
+verify_archive_checksum() {
+  asset="$1"
+  archive="$2"
+  sums_url="$DOWNLOAD_BASE/$version/SHA256SUMS"
+  sums_file="$tmp/SHA256SUMS"
+  if ! curl -fsSL "$sums_url" -o "$sums_file"; then
+    echo "codegraph: warning: checksum file unavailable; proceeding without SHA256 verification." >&2
+    return 0
+  fi
+  expected="$(awk -v asset="$asset" '$2 == asset || $2 == "*" asset { print tolower($1); exit }' "$sums_file")"
+  if [ -z "$expected" ]; then
+    echo "codegraph: warning: $asset not listed in SHA256SUMS; proceeding without SHA256 verification." >&2
+    return 0
+  fi
+  if ! actual="$(sha256_file "$archive")"; then
+    echo "codegraph: warning: no sha256 tool found; proceeding without SHA256 verification." >&2
+    return 0
+  fi
+  if [ "$actual" != "$expected" ]; then
+    echo "codegraph: checksum mismatch for $asset" >&2
+    echo "codegraph: expected $expected" >&2
+    echo "codegraph: actual   $actual" >&2
+    exit 1
+  fi
+  echo "Verified SHA256 for $asset"
+}
 
 if [ "${1:-}" = "--uninstall" ]; then
+  require_safe_install_dir
   rm -f "$BIN_DIR/codegraph"
   rm -rf "$INSTALL_DIR"
   echo "CodeGraph uninstalled (removed $INSTALL_DIR and $BIN_DIR/codegraph)."
@@ -64,11 +116,13 @@ fi
 case "$version" in v*) ;; *) version="v$version" ;; esac
 
 # 3. Download + extract the bundle.
-url="https://github.com/$REPO/releases/download/$version/codegraph-${target}.tar.gz"
+asset="codegraph-${target}.tar.gz"
+url="$DOWNLOAD_BASE/$version/$asset"
 echo "Installing CodeGraph $version ($target)..."
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 curl -fsSL "$url" -o "$tmp/cg.tar.gz" || { echo "codegraph: download failed: $url" >&2; exit 1; }
+verify_archive_checksum "$asset" "$tmp/cg.tar.gz"
 
 dest="$INSTALL_DIR/versions/$version"
 rm -rf "$dest"

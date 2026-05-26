@@ -45,7 +45,21 @@ export function buildNode25BlockBanner(nodeVersion: string): string {
  * *warns* on install (unless the user set `engine-strict`), so the CLI bootstrap
  * also hard-blocks here to actually enforce the floor.
  */
-export const MIN_NODE_MAJOR = 20;
+export const MIN_NODE_VERSION = '22.5.0';
+export const MIN_NODE_MAJOR = 22;
+
+export function isNodeVersionTooOld(nodeVersion: string): boolean {
+  const [major = 0, minor = 0, patch = 0] = nodeVersion
+    .split('.')
+    .map((part) => parseInt(part, 10))
+    .map((part) => Number.isFinite(part) ? part : 0);
+  const [minMajor = 0, minMinor = 0, minPatch = 0] = MIN_NODE_VERSION
+    .split('.')
+    .map((part) => parseInt(part, 10));
+  if (major !== minMajor) return major < minMajor;
+  if (minor !== minMinor) return minor < minMinor;
+  return patch < minPatch;
+}
 
 /**
  * Build the bordered banner shown when CodeGraph detects a Node.js major below
@@ -61,8 +75,8 @@ export function buildNodeTooOldBanner(nodeVersion: string): string {
     sep,
     `[CodeGraph] Unsupported Node.js version: ${nodeVersion}`,
     sep,
-    `CodeGraph requires Node.js ${MIN_NODE_MAJOR} or newer. Older versions lack`,
-    'language features and native APIs CodeGraph depends on, and are not',
+    `CodeGraph requires Node.js ${MIN_NODE_VERSION} or newer. Older versions lack`,
+    'the stable node:sqlite API CodeGraph depends on, and are not',
     'tested or supported.',
     '',
     'Fix: install Node.js 22 LTS:',

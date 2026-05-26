@@ -97,7 +97,7 @@ class ClaudeCodeTarget implements AgentTarget {
     const files: WriteResult['files'] = [];
 
     // 1. MCP server entry
-    files.push(writeMcpEntry(loc));
+    files.push(writeMcpEntry(loc, opts.mcpLaunchConfig));
 
     // 1b. Migrate away any stale ./.claude.json left by a pre-#207
     // local install, so the project isn't left with two competing
@@ -227,11 +227,14 @@ class ClaudeCodeTarget implements AgentTarget {
  * writes all three files. Without this split the shims silently
  * cause side effects callers don't expect.
  */
-export function writeMcpEntry(loc: Location): WriteResult['files'][number] {
+export function writeMcpEntry(
+  loc: Location,
+  mcpLaunchConfig?: InstallOptions['mcpLaunchConfig'],
+): WriteResult['files'][number] {
   const file = mcpJsonPath(loc);
   const existing = readJsonFile(file);
   const before = existing.mcpServers?.codegraph;
-  const after = getMcpServerConfig();
+  const after = getMcpServerConfig(mcpLaunchConfig);
 
   if (jsonDeepEqual(before, after)) {
     // Already exactly what we'd write — preserve byte-identical file.

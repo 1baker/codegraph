@@ -108,6 +108,28 @@ describe('Sync Module', () => {
         expect(nodes.length).toBeGreaterThan(0);
       });
 
+      it('records oversized source files as skipped so they do not stay pending forever', async () => {
+        fs.writeFileSync(
+          path.join(testDir, 'src', 'large.ts'),
+          `export const large = "${'x'.repeat(1024 * 1024 + 1)}";`
+        );
+
+        expect(cg.getChangedFiles().added).toContain('src/large.ts');
+
+        const result = await cg.sync();
+        expect(result.filesAdded).toBe(1);
+        expect(result.nodesUpdated).toBe(0);
+
+        const tracked = cg.getFile('src/large.ts');
+        expect(tracked).not.toBeNull();
+        expect(tracked?.nodeCount).toBe(0);
+        expect(tracked?.errors?.[0]?.code).toBe('size_exceeded');
+
+        const changes = cg.getChangedFiles();
+        expect(changes.added).not.toContain('src/large.ts');
+        expect(changes.modified).not.toContain('src/large.ts');
+      });
+
       it('should reindex modified files', async () => {
         // Modify existing file
         fs.writeFileSync(

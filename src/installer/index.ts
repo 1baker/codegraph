@@ -21,7 +21,10 @@ import {
   getTarget,
   resolveTargetFlag,
 } from './targets/registry';
-import type { AgentTarget, Location, TargetId } from './targets/types';
+import type { AgentTarget, Location, TargetId, WriteResult } from './targets/types';
+import { getGlyphs } from '../ui/glyphs';
+import { resolveMcpLaunchConfig } from './mcp-launch';
+import { installCodeGraphSkill, uninstallCodeGraphSkill } from './skills';
 // Import the lightweight submodules directly (not the ../sync barrel, which
 // re-exports FileWatcher and would transitively pull in ../extraction — the
 // installer must stay importable even when native modules can't load).
@@ -99,6 +102,7 @@ export async function runInstallerWithOptions(opts: RunInstallerOptions): Promis
     clack.outro('No agent targets selected — nothing to do.');
     return;
   }
+  const mcpLaunchConfig = resolveMcpLaunchConfig();
 
   // Step 2: install the codegraph npm package on PATH (always offered;
   // matches existing behavior). Skipped when --yes (assume present).
@@ -239,7 +243,7 @@ export async function runInstallerWithOptions(opts: RunInstallerOptions): Promis
       );
       continue;
     }
-    const result = target.install(location, { autoAllow, promptHook });
+    const result = target.install(location, { autoAllow, promptHook, mcpLaunchConfig });
     installedIds.push(target.id);
     for (const file of result.files) {
       if (file.action === 'created') sawCreated = true;
@@ -264,6 +268,24 @@ export async function runInstallerWithOptions(opts: RunInstallerOptions): Promis
       scope: location,
       kind: sawCreated ? 'fresh' : sawUpdated ? 'upgrade' : 'reinstall',
     });
+  }
+
+  if (location === 'global') {
+    try {
+      const skill = installCodeGraphSkill();
+      const verb = skill.action === 'unchanged'
+        ? 'Unchanged'
+        : skill.action === 'created' ? 'Created' : 'Updated';
+      clack.log.success(`Agent Skills: ${verb} ${tildify(skill.path)}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      clack.log.warn(`Agent Skills: skipped — ${msg}`);
+    }
+  }
+
+  // Step 6: for local install, initialize the project.
+  if (location === 'local') {
+    await initializeLocalProject(clack, useDefaults);
   }
 
   // Step 6: install wires up agents only — it deliberately does NOT index.
@@ -418,6 +440,7 @@ export async function runUninstaller(opts: RunUninstallerOptions): Promise<void>
   // Step 3: sweep + per-agent feedback.
   const reports = uninstallTargets(targets, location);
   const removed = reports.filter((r) => r.status === 'removed');
+  let skillRemoved = false;
 
   for (const r of reports) {
     if (r.status === 'removed') {
@@ -428,6 +451,16 @@ export async function runUninstaller(opts: RunUninstallerOptions): Promise<void>
       clack.log.info(`${r.displayName}: not configured — nothing to remove`);
     } else {
       clack.log.info(`${r.displayName}: skipped — ${r.notes[0] ?? 'unsupported location'}`);
+    }
+  }
+
+  if (location === 'global') {
+    const skill = uninstallCodeGraphSkill();
+    if (skill.action === 'removed') {
+      skillRemoved = true;
+      clack.log.success(`Agent Skills: removed ${tildify(skill.path)}`);
+    } else {
+      clack.log.info('Agent Skills: not installed — nothing to remove');
     }
   }
 
@@ -445,11 +478,13 @@ export async function runUninstaller(opts: RunUninstallerOptions): Promise<void>
   }
 
   // Step 5: summary.
-  if (removed.length > 0) {
+  if (removed.length > 0 || skillRemoved) {
     const names = removed.map((r) => r.displayName).join(', ');
+    const detail = names
+      ? `${names}${skillRemoved ? ', Agent Skills' : ''}`
+      : 'Agent Skills';
     clack.outro(
-      `Removed CodeGraph from ${removed.length} agent${removed.length > 1 ? 's' : ''}: ${names}. ` +
-      `Restart ${removed.length > 1 ? 'them' : 'it'} to apply.`,
+      `Removed CodeGraph from ${detail}. Restart configured agents to apply.`,
     );
   } else {
     clack.outro(`CodeGraph was not configured in any ${location} agent — nothing to remove.`);

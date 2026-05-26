@@ -13,6 +13,7 @@
  *   codegraph index [path]       Index all files in the project
  *   codegraph sync [path]        Sync changes since last index
  *   codegraph status [path]      Show index status
+ *   codegraph doctor [path]      Check installed runtime, MCP, skill, and index health
  *   codegraph query <search>     Search for symbols
  *   codegraph files [options]    Show project file structure
  *   codegraph context <task>     Build context for a task
@@ -37,7 +38,7 @@ import { detectWorktreeIndexMismatch, worktreeMismatchWarning } from '../sync/wo
 import { createShimmerProgress } from '../ui/shimmer-progress';
 import { getGlyphs } from '../ui/glyphs';
 
-import { buildNode25BlockBanner, buildNodeTooOldBanner, MIN_NODE_MAJOR } from './node-version-check';
+import { buildNode25BlockBanner, buildNodeTooOldBanner, isNodeVersionTooOld } from './node-version-check';
 import { installFatalHandlers } from './fatal-handler';
 import { relaunchWithWasmRuntimeFlagsIfNeeded } from '../extraction/wasm-runtime-flags';
 import { installCommandSupervision } from './command-supervision';
@@ -83,7 +84,7 @@ if (nodeMajor >= 25) {
 // Enforce the supported Node floor. `engines` in package.json only *warns* on
 // install (unless engine-strict), so hard-block here to actually keep users off
 // unsupported versions. Mirrors the 25+ block above. See package.json `engines`.
-if (nodeMajor < MIN_NODE_MAJOR) {
+if (isNodeVersionTooOld(nodeVersion)) {
   process.stderr.write(buildNodeTooOldBanner(nodeVersion) + '\n');
   if (!process.env.CODEGRAPH_ALLOW_UNSAFE_NODE) {
     process.exit(1);
@@ -896,6 +897,13 @@ program
       const changes = cg.getChangedFiles();
       const backend = cg.getBackend();
       const journalMode = cg.getJournalMode();
+      const skippedFiles = cg.getFiles()
+        .filter((file) => file.errors?.some((err) => err.code === 'size_exceeded'))
+        .map((file) => ({
+          path: file.path,
+          size: file.size,
+          reason: 'size_exceeded',
+        }));
 
       const buildInfo = cg.getIndexBuildInfo();
       const reindexRecommended = cg.isIndexStale();
@@ -943,6 +951,7 @@ program
             // sync sweeps them (#1187).
             pendingRefs,
           },
+          skippedFiles,
         }));
         cg.destroy();
         return;
@@ -1007,6 +1016,18 @@ program
       }
       console.log();
 
+      if (skippedFiles.length > 0) {
+        console.log(chalk.bold('Skipped Files:'));
+        console.log(`  ${formatNumber(skippedFiles.length)} files skipped intentionally`);
+        for (const skipped of skippedFiles.slice(0, 5)) {
+          console.log(`  ${skipped.path} ${chalk.dim(`(${formatNumber(skipped.size)} bytes, size limit)`)}`);
+        }
+        if (skippedFiles.length > 5) {
+          console.log(chalk.dim(`  ... ${formatNumber(skippedFiles.length - 5)} more`));
+        }
+        console.log();
+      }
+
       // Pending changes
       const totalChanges = changes.added.length + changes.modified.length + changes.removed.length;
       if (totalChanges > 0) {
@@ -1038,6 +1059,55 @@ program
       cg.destroy();
     } catch (err) {
       error(`Failed to get status: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+/**
+ * codegraph doctor [path]
+ */
+program
+  .command('doctor [path]')
+  .description('Check installed CodeGraph runtime, MCP, agent config, skill, and index health')
+  .option('-j, --json', 'Output as JSON')
+  .option('-t, --target <ids>', 'Target agent(s): comma-separated ids, "auto", "all", or "none". Default: auto')
+  .option('-l, --location <where>', 'Agent config location to inspect: "global" or "local"', 'global')
+  .option('--no-mcp', 'Skip the MCP launch/status smoke')
+  .option('--timeout <ms>', 'MCP smoke timeout in milliseconds', '7000')
+  .action(async (pathArg: string | undefined, options: {
+    json?: boolean;
+    target?: string;
+    location?: string;
+    mcp?: boolean;
+    timeout?: string;
+  }) => {
+    if (options.location !== 'global' && options.location !== 'local') {
+      error(`--location must be "global" or "local" (got "${options.location}").`);
+      process.exit(1);
+    }
+    const timeoutMs = Number.parseInt(options.timeout || '7000', 10);
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      error(`--timeout must be a positive integer (got "${options.timeout}").`);
+      process.exit(1);
+    }
+
+    try {
+      const { collectDoctorReport, renderDoctorText } = await import('./doctor');
+      const report = await collectDoctorReport({
+        projectPath: pathArg,
+        target: options.target,
+        location: options.location,
+        mcp: options.mcp,
+        timeoutMs,
+      });
+      if (options.json) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        process.stdout.write(renderDoctorText(report));
+      }
+      if (!report.ok) process.exit(1);
+    } catch (err) {
+      error(`Doctor failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
   });

@@ -20,6 +20,8 @@ import * as path from 'path';
 import * as os from 'os';
 import { ALL_TARGETS, getTarget, resolveTargetFlag } from '../src/installer/targets/registry';
 import { uninstallTargets } from '../src/installer';
+import { resolveMcpLaunchConfig } from '../src/installer/mcp-launch';
+import { codeGraphSkillInstallPath, installCodeGraphSkill, uninstallCodeGraphSkill } from '../src/installer/skills';
 import { upsertTomlTable, removeTomlTable, buildTomlTable } from '../src/installer/targets/toml';
 import { cleanupLegacyHooks, writePromptHookEntry, removePromptHookEntry } from '../src/installer/targets/claude';
 
@@ -876,6 +878,23 @@ describe('Installer targets — partial-state idempotency', () => {
     expect(after).not.toContain('enabled = true');
   });
 
+  it('codex: install can write a resolved durable MCP launch command', () => {
+    const codex = getTarget('codex')!;
+    codex.install('global', {
+      autoAllow: false,
+      mcpLaunchConfig: {
+        type: 'stdio',
+        command: '/opt/codegraph/bin/codegraph',
+        args: ['serve', '--mcp'],
+      },
+    });
+
+    const tomlPath = path.join(tmpHome, '.codex', 'config.toml');
+    const toml = fs.readFileSync(tomlPath, 'utf-8');
+    expect(toml).toContain('command = "/opt/codegraph/bin/codegraph"');
+    expect(toml).toContain('args = ["serve", "--mcp"]');
+  });
+
   it('claude: local install writes ./.mcp.json (project scope), not ./.claude.json', () => {
     const claude = getTarget('claude')!;
     const result = claude.install('local', { autoAllow: false });
@@ -1202,6 +1221,52 @@ describe('Installer targets — registry', () => {
   });
 });
 
+describe('Installer — MCP launch command resolution', () => {
+  it('uses codegraph when a durable binary is already on PATH', () => {
+    const launch = resolveMcpLaunchConfig({
+      env: { PATH: '/usr/local/bin' },
+      argv: ['/usr/bin/node', '/repo/dist/bin/codegraph.js', 'install'],
+      execPath: '/usr/bin/node',
+      platform: 'linux',
+      pathExists: (p) => p === '/usr/local/bin/codegraph' || p === '/repo/dist/bin/codegraph.js',
+    });
+
+    expect(launch).toEqual({ type: 'stdio', command: 'codegraph', args: ['serve', '--mcp'] });
+  });
+
+  it('uses npx for npx-launched installs when the only PATH hit is the npx temp binary', () => {
+    const launch = resolveMcpLaunchConfig({
+      env: { PATH: '/tmp/_npx/abc/node_modules/.bin', npm_command: 'exec' },
+      argv: ['/usr/bin/node', '/tmp/_npx/abc/node_modules/@colbymchenry/codegraph/dist/bin/codegraph.js', 'install', '--yes'],
+      execPath: '/usr/bin/node',
+      platform: 'linux',
+      pathExists: (p) => p === '/tmp/_npx/abc/node_modules/.bin/codegraph',
+    });
+
+    expect(launch).toEqual({
+      type: 'stdio',
+      command: 'npx',
+      args: ['--yes', '@colbymchenry/codegraph', 'serve', '--mcp'],
+    });
+  });
+
+  it('uses the current built CLI entry when no PATH binary exists', () => {
+    const launch = resolveMcpLaunchConfig({
+      env: { PATH: '' },
+      argv: ['/usr/bin/node', '/repo/dist/bin/codegraph.js', 'install', '--target=codex'],
+      execPath: '/usr/bin/node',
+      platform: 'linux',
+      pathExists: (p) => p === '/repo/dist/bin/codegraph.js',
+    });
+
+    expect(launch).toEqual({
+      type: 'stdio',
+      command: '/usr/bin/node',
+      args: ['/repo/dist/bin/codegraph.js', 'serve', '--mcp'],
+    });
+  });
+});
+
 describe('Installer targets — TOML serializer (Codex backbone)', () => {
   it('builds a [mcp_servers.codegraph] block with command + args', () => {
     const block = buildTomlTable('mcp_servers.codegraph', {
@@ -1393,6 +1458,73 @@ describe('Installer — uninstallTargets sweep (codegraph uninstall)', () => {
     // Cursor was not in the subset — still configured.
     expect(getTarget('cursor')!.detect('global').alreadyConfigured).toBe(true);
     expect(getTarget('claude')!.detect('global').alreadyConfigured).toBe(false);
+  });
+});
+
+describe('Installer — codegraph-workspace skill', () => {
+  let tmpHome: string;
+  let homeRestore: { restore: () => void };
+
+  beforeEach(() => {
+    tmpHome = mkTmpDir('skill-home');
+    homeRestore = setHome(tmpHome);
+  });
+
+  afterEach(() => {
+    homeRestore.restore();
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  it('installs the bundled skill into the user skill root', () => {
+    const result = installCodeGraphSkill();
+    const skillDir = codeGraphSkillInstallPath();
+
+    expect(result).toEqual({ path: skillDir, action: 'created' });
+    expect(fs.existsSync(path.join(skillDir, 'SKILL.md'))).toBe(true);
+    expect(fs.existsSync(path.join(skillDir, 'agents', 'openai.yaml'))).toBe(true);
+    expect(fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf-8')).toContain('name: codegraph-workspace');
+  });
+
+  it('is idempotent when the installed skill already matches', () => {
+    installCodeGraphSkill();
+    const second = installCodeGraphSkill();
+
+    expect(second.action).toBe('unchanged');
+  });
+
+  it('updates only the codegraph skill directory and preserves sibling skills', () => {
+    const sibling = path.join(tmpHome, '.agents', 'skills', 'other-skill', 'SKILL.md');
+    fs.mkdirSync(path.dirname(sibling), { recursive: true });
+    fs.writeFileSync(sibling, '---\nname: other-skill\ndescription: keep\n---\n');
+
+    installCodeGraphSkill();
+    const skillDir = codeGraphSkillInstallPath();
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), 'stale local edit\n');
+
+    const updated = installCodeGraphSkill();
+
+    expect(updated.action).toBe('updated');
+    expect(fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf-8')).toContain('name: codegraph-workspace');
+    expect(fs.readFileSync(sibling, 'utf-8')).toContain('name: other-skill');
+  });
+
+  it('uninstalls only the codegraph skill directory', () => {
+    const sibling = path.join(tmpHome, '.agents', 'skills', 'other-skill', 'SKILL.md');
+    fs.mkdirSync(path.dirname(sibling), { recursive: true });
+    fs.writeFileSync(sibling, '---\nname: other-skill\ndescription: keep\n---\n');
+
+    installCodeGraphSkill();
+    const removed = uninstallCodeGraphSkill();
+
+    expect(removed.action).toBe('removed');
+    expect(fs.existsSync(codeGraphSkillInstallPath())).toBe(false);
+    expect(fs.existsSync(sibling)).toBe(true);
+  });
+
+  it('reports not-found on a clean uninstall', () => {
+    const removed = uninstallCodeGraphSkill();
+
+    expect(removed.action).toBe('not-found');
   });
 });
 

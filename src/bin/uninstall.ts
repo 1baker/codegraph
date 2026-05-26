@@ -4,9 +4,9 @@
  *
  * Runs automatically when `npm uninstall -g @colbymchenry/codegraph`
  * is called. Loops over every known agent target's `uninstall(loc)`
- * for the global location only — local-location entries live inside
- * project working trees and aren't ours to nuke at npm-uninstall
- * time.
+ * for the global location only, then removes the shared CodeGraph
+ * agent skill. Local-location entries live inside project working
+ * trees and aren't ours to nuke at npm-uninstall time.
  *
  * This script must never throw — a failed cleanup must not block
  * uninstall.
@@ -27,6 +27,15 @@ try {
       // Each target is independently safe-to-skip; per-target failure
       // must not stop the loop.
     }
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { uninstallCodeGraphSkill } = require('../installer/skills') as
+      typeof import('../installer/skills');
+    uninstallCodeGraphSkill();
+  } catch {
+    // Skill cleanup is best-effort for npm uninstall.
   }
 } catch {
   // If the registry itself can't be loaded (e.g. partial install),

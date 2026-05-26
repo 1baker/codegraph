@@ -120,6 +120,9 @@ jobs:
           done
           ls -lh release
 
+      - name: Check bundle product artifacts
+        run: npm run check:release-artifacts -- --bundles-only
+
       - name: Generate SHA256SUMS
         # Published as a release asset; the npm launcher verifies downloaded
         # bundles against it (basenames only, so its path.basename match works).
@@ -159,6 +162,7 @@ jobs:
         run: |
           V="${{ steps.ver.outputs.version }}"
           bash scripts/pack-npm.sh "$V"
+          npm run check:release-artifacts
           # Platform packages first, then the main shim (which depends on them).
           # Skip any already on the registry so a re-run only fills in gaps.
           for dir in release/npm/codegraph-* release/npm/main; do

@@ -11,10 +11,60 @@
 # Environment:
 #   CODEGRAPH_VERSION      release tag to install (default: latest)
 #   CODEGRAPH_INSTALL_DIR  install location (default: %LOCALAPPDATA%\codegraph)
+#   CODEGRAPH_DOWNLOAD_BASE release asset base URL
+#                            (default: https://github.com/colbymchenry/codegraph/releases/download)
 
 $ErrorActionPreference = 'Stop'
 $repo = 'colbymchenry/codegraph'
 $installDir = if ($env:CODEGRAPH_INSTALL_DIR) { $env:CODEGRAPH_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'codegraph' }
+$downloadBase = if ($env:CODEGRAPH_DOWNLOAD_BASE) { $env:CODEGRAPH_DOWNLOAD_BASE.TrimEnd('/') } else { "https://github.com/$repo/releases/download" }
+
+function Test-UnsafeInstallDir([string]$Path) {
+  if (-not $Path) { return $true }
+  $full = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+  $homeDir = [System.IO.Path]::GetFullPath($HOME).TrimEnd('\')
+  $localAppData = if ($env:LOCALAPPDATA) { [System.IO.Path]::GetFullPath($env:LOCALAPPDATA).TrimEnd('\') } else { '' }
+  $blocked = @(
+    [System.IO.Path]::GetPathRoot($full).TrimEnd('\'),
+    $homeDir,
+    $localAppData,
+    (Join-Path $env:SystemDrive '\Windows').TrimEnd('\'),
+    (Join-Path $env:SystemDrive '\Program Files').TrimEnd('\'),
+    (Join-Path $env:SystemDrive '\Program Files (x86)').TrimEnd('\')
+  ) | Where-Object { $_ }
+  return $blocked -contains $full
+}
+
+function Verify-ArchiveChecksum([string]$ArchivePath, [string]$AssetName, [string]$Version) {
+  $sums = Join-Path (Split-Path $ArchivePath -Parent) 'SHA256SUMS'
+  $sumsUrl = "$downloadBase/$Version/SHA256SUMS"
+  try {
+    Invoke-WebRequest -Uri $sumsUrl -OutFile $sums
+  } catch {
+    Write-Warning "checksum file unavailable; proceeding without SHA256 verification."
+    return
+  }
+  $expected = $null
+  foreach ($line in Get-Content $sums) {
+    if ($line -match '^([0-9a-fA-F]{64})\s+\*?(.+)$' -and [System.IO.Path]::GetFileName($matches[2].Trim()) -eq $AssetName) {
+      $expected = $matches[1].ToLowerInvariant()
+      break
+    }
+  }
+  if (-not $expected) {
+    Write-Warning "$AssetName not listed in SHA256SUMS; proceeding without SHA256 verification."
+    return
+  }
+  $actual = (Get-FileHash -Algorithm SHA256 $ArchivePath).Hash.ToLowerInvariant()
+  if ($actual -ne $expected) {
+    throw "codegraph: checksum mismatch for $AssetName (expected $expected, got $actual)"
+  }
+  Write-Host "Verified SHA256 for $AssetName"
+}
+
+if (Test-UnsafeInstallDir $installDir) {
+  throw "codegraph: refusing unsafe CODEGRAPH_INSTALL_DIR '$installDir'. Choose a dedicated directory such as %LOCALAPPDATA%\codegraph."
+}
 
 # 1. Detect architecture -> target matching the release archives.
 $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' }
@@ -28,12 +78,14 @@ if (-not $version) {
 if (-not $version) { throw "codegraph: could not resolve latest version; set CODEGRAPH_VERSION." }
 
 # 3. Download + extract the bundle into a stable 'current' dir (overwritten on upgrade).
-$url = "https://github.com/$repo/releases/download/$version/codegraph-$target.zip"
+$asset = "codegraph-$target.zip"
+$url = "$downloadBase/$version/$asset"
 Write-Host "Installing CodeGraph $version ($target)..."
 $tmp = Join-Path $env:TEMP ("cg-" + [guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 $zip = Join-Path $tmp 'cg.zip'
 Invoke-WebRequest -Uri $url -OutFile $zip
+Verify-ArchiveChecksum -ArchivePath $zip -AssetName $asset -Version $version
 
 $dest = Join-Path $installDir 'current'
 if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }

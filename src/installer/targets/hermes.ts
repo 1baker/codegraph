@@ -24,7 +24,7 @@ import {
   Location,
   WriteResult,
 } from './types';
-import { atomicWriteFileSync } from './shared';
+import { atomicWriteFileSync, getMcpServerConfig } from './shared';
 
 type LineRange = { start: number; end: number };
 
@@ -51,7 +51,7 @@ class HermesTarget implements AgentTarget {
     };
   }
 
-  install(loc: Location, _opts: InstallOptions): WriteResult {
+  install(loc: Location, opts: InstallOptions): WriteResult {
     if (loc !== 'global') {
       return {
         files: [],
@@ -59,7 +59,7 @@ class HermesTarget implements AgentTarget {
       };
     }
     return {
-      files: [writeHermesConfig()],
+      files: [writeHermesConfig(opts.mcpLaunchConfig)],
       notes: ['Start a new Hermes session for MCP changes to take effect.'],
     };
   }
@@ -120,11 +120,11 @@ function readText(file: string): string {
   }
 }
 
-function writeHermesConfig(): WriteResult['files'][number] {
+function writeHermesConfig(mcpLaunchConfig?: InstallOptions['mcpLaunchConfig']): WriteResult['files'][number] {
   const file = configPath();
   const existed = fs.existsSync(file);
   const before = readText(file);
-  const afterMcp = upsertCodeGraphMcpServer(before);
+  const afterMcp = upsertCodeGraphMcpServer(before, mcpLaunchConfig);
   const after = upsertCodeGraphToolset(afterMcp);
 
   if (after === before) {
@@ -249,21 +249,27 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function renderCodeGraphMcpChild(): string[] {
+function quoteYamlScalar(value: string): string {
+  return /^[A-Za-z0-9_./${}:@-]+$/.test(value)
+    ? value
+    : JSON.stringify(value);
+}
+
+function renderCodeGraphMcpChild(mcpLaunchConfig?: InstallOptions['mcpLaunchConfig']): string[] {
+  const mcp = getMcpServerConfig(mcpLaunchConfig);
   return [
     '  codegraph:',
-    '    command: codegraph',
+    `    command: ${quoteYamlScalar(mcp.command)}`,
     '    args:',
-    '      - serve',
-    '      - --mcp',
+    ...mcp.args.map((arg) => `      - ${quoteYamlScalar(arg)}`),
     '    timeout: 120',
     '    connect_timeout: 60',
     '    enabled: true',
   ];
 }
 
-function renderCodeGraphMcpBlock(): string[] {
-  return ['mcp_servers:', ...renderCodeGraphMcpChild()];
+function renderCodeGraphMcpBlock(mcpLaunchConfig?: InstallOptions['mcpLaunchConfig']): string[] {
+  return ['mcp_servers:', ...renderCodeGraphMcpChild(mcpLaunchConfig)];
 }
 
 function hasCodeGraphMcpServer(content: string): boolean {
@@ -272,16 +278,19 @@ function hasCodeGraphMcpServer(content: string): boolean {
   return !!parent && !!childRange(lines, parent, 'codegraph');
 }
 
-function upsertCodeGraphMcpServer(content: string): string {
+function upsertCodeGraphMcpServer(
+  content: string,
+  mcpLaunchConfig?: InstallOptions['mcpLaunchConfig'],
+): string {
   const lines = splitLines(content);
   const parent = topLevelRange(lines, 'mcp_servers');
   const child = parent ? childRange(lines, parent, 'codegraph') : null;
-  const replacement = renderCodeGraphMcpChild();
+  const replacement = renderCodeGraphMcpChild(mcpLaunchConfig);
 
   if (!parent) {
     if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
     if (lines.length > 0) lines.push('');
-    lines.push(...renderCodeGraphMcpBlock());
+    lines.push(...renderCodeGraphMcpBlock(mcpLaunchConfig));
     return joinLines(lines);
   }
 
