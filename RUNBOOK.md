@@ -217,6 +217,54 @@ Validation:
 - PowerShell parsed `install.ps1` with `[scriptblock]::Create(...)`.
 - `git diff --check`
 
+## Turn 10 | 2026-05-26
+
+Plan: policy maintenance
+
+Actions:
+
+- Ran `repo-policy-selector` against this repo using the installed selector
+  bundle at
+  `/home/ecochran76/workspace.local/agent-policies/repo-policy-selector/`.
+- Confirmed the selector library enumerates `codegraph-usage` in
+  `policy-library/catalog.yaml`.
+- The selector reported this repo as `repo-product-engineering` with
+  `recommendation_mode=patch-missing`; `codegraph-usage` was one of the missing
+  recommended modules.
+- Added `docs/dev/policies/0019-codegraph-usage.md`.
+- Wired the new module into the `AGENTS.md` policy entry list.
+
+Validation:
+
+- `scripts/audit_planning_contract.py --repo-root
+  /home/ecochran76/workspace.local/codegraph --json` reported `ok=true`.
+- Re-ran `select_policy.py`; `codegraph-usage` moved into
+  `already_adopted_modules`, leaving only `graph-backed-memory-usage` as a
+  separate missing recommendation.
+- `git diff --check`
+
+## Turn 11 | 2026-05-26
+
+Plan: policy maintenance
+
+Actions:
+
+- Continued the `repo-policy-selector` missing-module adoption from Turn 10.
+- Read the selector's `graph-backed-memory-usage` module from the installed
+  policy library.
+- Added `docs/dev/policies/0020-graph-backed-memory-usage.md` with CodeGraph
+  repo notes that keep graph memory advisory and preserve repo files, plans,
+  runbook entries, tests, release artifacts, and benchmark docs as authorities.
+- Wired the new module into the `AGENTS.md` policy entry list.
+
+Validation:
+
+- Re-ran `select_policy.py`; `missing_recommended_modules=[]`.
+- `scripts/audit_planning_contract.py --repo-root
+  /home/ecochran76/workspace.local/codegraph --json` reported `ok=true`.
+- `git diff --check`
+- `grep -RIn '[[:blank:]]$'` found no trailing whitespace in the touched files.
+
 ## Turn 1 | 2026-05-25
 
 Plan: `docs/dev/plans/0001-2026-05-25-codex-install-readiness.md`

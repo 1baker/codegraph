@@ -267,6 +267,8 @@ Read and follow:
 - `docs/dev/policies/0016-documentation-change-control.md`
 - `docs/dev/policies/0017-multi-agent-reconciliation.md`
 - `docs/dev/policies/0018-subagent-runtime-governance.md`
+- `docs/dev/policies/0019-codegraph-usage.md`
+- `docs/dev/policies/0020-graph-backed-memory-usage.md`
 
 ## Scope
 
