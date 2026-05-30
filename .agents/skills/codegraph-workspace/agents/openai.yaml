@@ -1,4 +1,4 @@
 interface:
   display_name: "CodeGraph Workspace"
   short_description: "Use CodeGraph indexes while coding"
-  default_prompt: "Use $codegraph-workspace to inspect this indexed repo with CodeGraph before grep/read."
+  default_prompt: "Use $codegraph-workspace to check CodeGraph status, refresh stale indexes, then inspect this repo before grep/read."

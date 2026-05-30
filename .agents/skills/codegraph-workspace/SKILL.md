@@ -18,10 +18,17 @@ product requirements, runtime truth, test results, or user intent.
 3. If the repo is not initialized, do not silently create an index unless the
    user asked to install/index/use CodeGraph. Otherwise ask before running
    `codegraph init -i <repo>`.
-4. If status shows pending changes and the task depends on current code, run
-   `codegraph sync <repo>` before querying. If sync leaves pending files, report
-   them in the answer.
-5. Treat `.codegraph/` as local derived state. Keep it out of tracked source.
+4. If status shows pending changes, refresh before trusting graph answers:
+   - CLI available: run `codegraph sync <repo>`, then run status again.
+   - MCP-only environment: call `codegraph_status` again after the watcher
+     quiet window if the status says files are pending/indexing.
+   - If pending changes remain after refresh, report the exact counts/files and
+     use direct file reads only for those stale files. Treat the rest of the
+     graph as usable.
+5. If a codegraph tool response includes a stale/pending banner, stop and
+   refresh with `codegraph sync <repo>` before continuing unless the task is
+   specifically asking about the pre-refresh state.
+6. Treat `.codegraph/` as local derived state. Keep it out of tracked source.
 
 ## Tool Selection
 
@@ -62,9 +69,11 @@ If MCP tools are unavailable, use the CLI equivalents where available:
   precise line ranges not returned by CodeGraph, or runtime evidence.
 - Do not loop over many `codegraph_node` calls when one `codegraph_explore` can
   return the relevant source grouped by file.
-- After editing files, wait for the watcher debounce or run `codegraph sync`
-  before querying the changed area again.
-- When CodeGraph is stale, uninitialized, missing MCP tools, or skipping large
-  files, say that directly and adjust confidence.
+- After editing files, run `codegraph sync <repo>` before querying the changed
+  area again. If you cannot run CLI sync, wait for the watcher debounce and
+  confirm with `codegraph_status`.
+- When CodeGraph is stale, refresh it before answering. If refresh fails or
+  leaves pending files, say that directly, name the affected files/counts, and
+  adjust confidence only for those files.
 - Keep final answers grounded: cite files/symbols returned by CodeGraph and
   mention any fallback grep/read or tests that were needed.
