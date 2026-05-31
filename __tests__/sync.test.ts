@@ -130,6 +130,35 @@ describe('Sync Module', () => {
         expect(changes.modified).not.toContain('src/large.ts');
       });
 
+      it('allows the oversized-file cap to be raised for hand-authored source', async () => {
+        const previous = process.env.CODEGRAPH_MAX_FILE_SIZE_BYTES;
+        process.env.CODEGRAPH_MAX_FILE_SIZE_BYTES = String(2 * 1024 * 1024);
+
+        try {
+          fs.writeFileSync(
+            path.join(testDir, 'src', 'large-allowed.ts'),
+            `export function allowedLarge() { return 1; }\n/* ${'x'.repeat(1024 * 1024 + 1)} */`
+          );
+
+          const result = await cg.sync();
+          expect(result.filesAdded).toBe(1);
+          expect(result.nodesUpdated).toBeGreaterThan(0);
+
+          const tracked = cg.getFile('src/large-allowed.ts');
+          expect(tracked).not.toBeNull();
+          expect(tracked?.errors?.some((error) => error.code === 'size_exceeded')).not.toBe(true);
+
+          const nodes = cg.searchNodes('allowedLarge');
+          expect(nodes.some((result) => result.node.filePath === 'src/large-allowed.ts')).toBe(true);
+        } finally {
+          if (previous === undefined) {
+            delete process.env.CODEGRAPH_MAX_FILE_SIZE_BYTES;
+          } else {
+            process.env.CODEGRAPH_MAX_FILE_SIZE_BYTES = previous;
+          }
+        }
+      });
+
       it('should reindex modified files', async () => {
         // Modify existing file
         fs.writeFileSync(

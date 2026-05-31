@@ -75,5 +75,10 @@ If MCP tools are unavailable, use the CLI equivalents where available:
 - When CodeGraph is stale, refresh it before answering. If refresh fails or
   leaves pending files, say that directly, name the affected files/counts, and
   adjust confidence only for those files.
+- If status lists a skipped oversized file, treat the rest of the index as
+  usable. Only raise the default 1 MiB cap when the skipped file is
+  hand-authored source required for the task: restart indexing/MCP with
+  `CODEGRAPH_MAX_FILE_SIZE_BYTES=<bytes>`, run `codegraph sync <repo>`, then
+  re-check status. Do not raise it for generated bundles or vendored blobs.
 - Keep final answers grounded: cite files/symbols returned by CodeGraph and
   mention any fallback grep/read or tests that were needed.

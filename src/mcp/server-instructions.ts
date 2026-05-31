@@ -65,6 +65,7 @@ calls; a grep/read exploration is dozens.
 
 - If a tool reports a project isn't indexed (no \`.codegraph/\`), stop calling codegraph tools for that project for the rest of the session and use your built-in tools there instead. Indexing is the user's decision — mention they can run \`codegraph init\` if it comes up, but don't run it yourself.
 - Index lags file writes by ~1 second.
+- Source files above 1 MiB are skipped by default to avoid generated bundles and vendored blobs. If a skipped file is hand-authored source required for the task, raise the cap before indexing/MCP startup with \`CODEGRAPH_MAX_FILE_SIZE_BYTES=<bytes>\`, run \`codegraph sync <repo>\`, then re-check status.
 - Cross-file resolution is best-effort name matching; ambiguous calls may return multiple candidates.
 - No live correctness validation — that's still the TypeScript compiler / test suite / linter's job. Codegraph supplements those with structural context they don't have.
 `;

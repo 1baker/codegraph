@@ -119,15 +119,30 @@ export function hashContent(content: string): string {
 }
 
 /**
- * Skip files larger than this (bytes). Generated bundles, minified JS, and
- * vendored blobs blow the WASM heap and the worker-recycle budget for no useful
- * symbols. 1 MB covers essentially all hand-written source.
+ * Skip files larger than this many bytes by default. Generated bundles,
+ * minified JS, and vendored blobs blow the WASM heap and the worker-recycle
+ * budget for no useful symbols. 1 MB covers essentially all hand-written
+ * source; set CODEGRAPH_MAX_FILE_SIZE_BYTES for rare hand-authored files that
+ * legitimately need a larger cap.
  */
-const MAX_FILE_SIZE = 1024 * 1024;
+const DEFAULT_MAX_FILE_SIZE = 1024 * 1024;
+const MAX_FILE_SIZE_ENV = 'CODEGRAPH_MAX_FILE_SIZE_BYTES';
+
+function getMaxFileSize(): number {
+  const raw = process.env[MAX_FILE_SIZE_ENV];
+  if (!raw) return DEFAULT_MAX_FILE_SIZE;
+
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    return DEFAULT_MAX_FILE_SIZE;
+  }
+  return parsed;
+}
 
 function fileSizeExceededError(filePath: string, size: number): ExtractionError {
+  const maxFileSize = getMaxFileSize();
   return {
-    message: `File exceeds max size (${size} > ${MAX_FILE_SIZE})`,
+    message: `File exceeds max size (${size} > ${maxFileSize})`,
     filePath,
     severity: 'warning',
     code: 'size_exceeded',
@@ -1761,12 +1776,12 @@ export class ExtractionOrchestrator {
           continue;
         }
 
-        // Honour MAX_FILE_SIZE. Without this check, vendored generated
+        // Honour the max file-size cap. Without this check, vendored generated
         // headers, minified bundles, and other multi-MB files get indexed,
         // wasting WASM heap and the worker recycle budget on inputs with no
         // useful symbols. The single-file extractFile path already enforces
         // this; the bulk path used to silently skip the check.
-        if (stats.size > MAX_FILE_SIZE) {
+        if (stats.size > getMaxFileSize()) {
           const sizeError = fileSizeExceededError(filePath, stats.size);
           this.storeSkippedFileRecord(filePath, content, stats, sizeError);
           processed++;
@@ -2054,7 +2069,7 @@ export class ExtractionOrchestrator {
     }
 
     // Check file size
-    if (stats.size > MAX_FILE_SIZE) {
+    if (stats.size > getMaxFileSize()) {
       const sizeError = fileSizeExceededError(relativePath, stats.size);
       this.storeSkippedFileRecord(relativePath, content, stats, sizeError);
       return {
