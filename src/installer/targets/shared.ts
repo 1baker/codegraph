@@ -11,7 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
-  CODEGRAPH_INSTRUCTIONS_BLOCK,
+  INSTRUCTIONS_TEMPLATE,
   CODEGRAPH_SECTION_START,
   CODEGRAPH_SECTION_END,
 } from '../instructions-template';
@@ -188,7 +188,7 @@ export function replaceOrAppendMarkedSection(
 export function upsertInstructionsEntry(file: string): { path: string; action: 'created' | 'updated' | 'unchanged' } {
   const action = replaceOrAppendMarkedSection(
     file,
-    CODEGRAPH_INSTRUCTIONS_BLOCK,
+    INSTRUCTIONS_TEMPLATE,
     CODEGRAPH_SECTION_START,
     CODEGRAPH_SECTION_END,
   );

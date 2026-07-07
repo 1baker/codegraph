@@ -21,8 +21,7 @@ import {
   getTarget,
   resolveTargetFlag,
 } from './targets/registry';
-import type { AgentTarget, Location, TargetId, WriteResult } from './targets/types';
-import { getGlyphs } from '../ui/glyphs';
+import type { AgentTarget, Location, TargetId } from './targets/types';
 import { resolveMcpLaunchConfig } from './mcp-launch';
 import { installCodeGraphSkill, uninstallCodeGraphSkill } from './skills';
 // Import the lightweight submodules directly (not the ../sync barrel, which
@@ -281,11 +280,6 @@ export async function runInstallerWithOptions(opts: RunInstallerOptions): Promis
       const msg = err instanceof Error ? err.message : String(err);
       clack.log.warn(`Agent Skills: skipped — ${msg}`);
     }
-  }
-
-  // Step 6: for local install, initialize the project.
-  if (location === 'local') {
-    await initializeLocalProject(clack, useDefaults);
   }
 
   // Step 6: install wires up agents only — it deliberately does NOT index.
