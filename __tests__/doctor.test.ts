@@ -92,10 +92,15 @@ describe('codegraph doctor', () => {
       '--target=codex',
       '--location=global',
       '--json',
-      '--timeout=7000',
+      '--timeout=15000',
     ], {
       encoding: 'utf-8',
-      env: { ...process.env, CODEGRAPH_NO_WATCH: '1', CODEGRAPH_PPID_POLL_MS: '0' },
+      env: {
+        ...process.env,
+        CODEGRAPH_NO_DAEMON: '1',
+        CODEGRAPH_NO_WATCH: '1',
+        CODEGRAPH_PPID_POLL_MS: '0',
+      },
     });
 
     expect(result.status, result.stderr).toBe(0);

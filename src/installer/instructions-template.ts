@@ -29,6 +29,8 @@ This project has a CodeGraph MCP server (\`codegraph_*\` tools) configured. Code
 
 Use codegraph for **structural** questions — what calls what, what would break, where is X defined, what is X's signature. Use native grep/read only for **literal text** queries (string contents, comments, log messages) or after you already have a specific file open.
 
+If MCP tools are unavailable, \`codegraph explore "<symbol names or question>"\` prints source and flow context from the same index.
+
 | Question | Tool |
 |---|---|
 | "Where is X defined?" / "Find symbol named X" | \`codegraph_search\` |
