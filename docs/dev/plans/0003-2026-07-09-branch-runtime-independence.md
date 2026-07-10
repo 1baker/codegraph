@@ -1,6 +1,6 @@
 # Plan 0003 | Branch And Runtime Independence
 
-State: OPEN
+State: CLOSED
 Lane: P03
 Date: 2026-07-09
 Owner: Codex
@@ -157,8 +157,19 @@ codegraph doctor /home/ecochran76/workspace.local/codegraph --target=codex --loc
   and reports `ahead 331, behind 6` relative to `cochran/main`.
 - Current install confirmed: `/home/ecochran76/.local/bin/codegraph` points into
   the development checkout.
-- Next action: create and push `eco/main`, then install a copied runtime outside
-  the checkout.
+- Created `eco/main` as the long-lived operator carry branch.
+- Pushed `eco/main` to the `cochran` fork and configured upstream tracking.
+- Created `backup/main-before-mirror-reset-20260709` before changing local
+  `main`.
+- Reset the local `main` ref to `origin/main` and configured it to track
+  `origin/main`.
+- Created `backup/eco-main/20260709-before-rebase` before refreshing the carry
+  branch.
+- Rebasing `eco/main` after a fresh upstream fetch pulled in upstream
+  `origin/main` at `e552dc2d2f5da4507ebe906b68b3ba806e204eb8` and version
+  `1.3.1`.
+- The branch and runtime model is now the documented steady state for this
+  workstation.
 
 ## Definition Of Done
 
