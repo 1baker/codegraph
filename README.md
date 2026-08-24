@@ -635,6 +635,10 @@ What it skips out of the box:
 - **Anything in your `.gitignore`** — honored in git repos via git, and in
   non-git projects by reading `.gitignore` directly (root and nested).
 - **Files larger than 1 MB** — generated bundles, minified JS, vendored blobs.
+  For a rare hand-authored source file that must be indexed, start CodeGraph
+  with `CODEGRAPH_MAX_FILE_SIZE_BYTES=<bytes>`, run `codegraph sync <repo>`,
+  and re-check `codegraph status <repo>`. Do not raise the cap for generated or
+  vendored files.
 
 To keep something else out, add it to `.gitignore`. To pull a default-excluded
 directory back **in** (say you really do want a vendored dependency indexed),

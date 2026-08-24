@@ -48,4 +48,6 @@ In repositories indexed by CodeGraph (a \`.codegraph/\` directory exists at the 
 - **Shell** (always works): \`codegraph explore "<symbol names or question>"\` prints the same output.
 
 If there is no \`.codegraph/\` directory, skip CodeGraph entirely — indexing is the user's decision.
+
+- **Skipped oversized files are intentional.** CodeGraph skips individual source files above 1 MiB by default. If a skipped file is hand-authored source required for the task, raise the cap before indexing or MCP startup with \`CODEGRAPH_MAX_FILE_SIZE_BYTES=<bytes>\`, run \`codegraph sync <repo>\`, then re-check status. Do not raise it for generated bundles or vendored blobs.
 ${CODEGRAPH_SECTION_END}`;

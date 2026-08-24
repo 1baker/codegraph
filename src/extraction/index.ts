@@ -140,11 +140,35 @@ export function hashContent(content: string): string {
 }
 
 /**
- * Skip files larger than this (bytes). Generated bundles, minified JS, and
- * vendored blobs blow the WASM heap and the worker-recycle budget for no useful
- * symbols. 1 MB covers essentially all hand-written source.
+ * Skip files larger than this many bytes by default. Generated bundles,
+ * minified JS, and vendored blobs blow the WASM heap and the worker-recycle
+ * budget for no useful symbols. 1 MB covers essentially all hand-written
+ * source; set CODEGRAPH_MAX_FILE_SIZE_BYTES for rare hand-authored files that
+ * legitimately need a larger cap.
  */
-const MAX_FILE_SIZE = 1024 * 1024;
+const DEFAULT_MAX_FILE_SIZE = 1024 * 1024;
+const MAX_FILE_SIZE_ENV = 'CODEGRAPH_MAX_FILE_SIZE_BYTES';
+
+function getMaxFileSize(): number {
+  const raw = process.env[MAX_FILE_SIZE_ENV];
+  if (!raw) return DEFAULT_MAX_FILE_SIZE;
+
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    return DEFAULT_MAX_FILE_SIZE;
+  }
+  return parsed;
+}
+
+function fileSizeExceededError(filePath: string, size: number): ExtractionError {
+  const maxFileSize = getMaxFileSize();
+  return {
+    message: `File exceeds max size (${size} > ${maxFileSize})`,
+    filePath,
+    severity: 'warning',
+    code: 'size_exceeded',
+  };
+}
 
 /**
  * Directory names that are dependency, build, cache, or tooling output across the
@@ -1916,22 +1940,17 @@ export class ExtractionOrchestrator {
           continue;
         }
 
-        // Honour MAX_FILE_SIZE. Without this check, vendored generated
+        // Honour the configured maximum file size. Without this check, vendored generated
         // headers, minified bundles, and other multi-MB files get indexed,
         // wasting WASM heap and the worker recycle budget on inputs with no
         // useful symbols. The single-file extractFile path already enforces
         // this; the bulk path used to silently skip the check.
-        if (stats.size > MAX_FILE_SIZE) {
+        if (stats.size > getMaxFileSize()) {
           await storeResult(filePath, content, stats, {
             nodes: [],
             edges: [],
             unresolvedReferences: [],
-            errors: [{
-              message: `File exceeds max size (${stats.size} > ${MAX_FILE_SIZE})`,
-              filePath,
-              severity: 'warning',
-              code: 'size_exceeded',
-            }],
+            errors: [fileSizeExceededError(filePath, stats.size)],
             durationMs: 0,
           });
           continue;
@@ -2255,19 +2274,12 @@ export class ExtractionOrchestrator {
     const language = detectLanguage(relativePath, content, loadExtensionOverrides(this.rootDir));
 
     // Check file size
-    if (stats.size > MAX_FILE_SIZE) {
+    if (stats.size > getMaxFileSize()) {
       const result: ExtractionResult = {
         nodes: [],
         edges: [],
         unresolvedReferences: [],
-        errors: [
-          {
-            message: `File exceeds max size (${stats.size} > ${MAX_FILE_SIZE})`,
-            filePath: relativePath,
-            severity: 'warning',
-            code: 'size_exceeded',
-          },
-        ],
+        errors: [fileSizeExceededError(relativePath, stats.size)],
         durationMs: 0,
       };
       await this.storeExtractionResult(relativePath, content, language, stats, result, createYielder());

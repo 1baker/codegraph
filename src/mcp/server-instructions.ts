@@ -66,6 +66,10 @@ calls; a grep/read exploration is dozens.
 
 - **"Already sent earlier in this conversation" is a pointer, not a gap.** When a file's section carries that line instead of (or above) its source, an earlier \`codegraph_explore\` in THIS conversation already returned those exact lines and the file has not changed since — so the copy already in your context is current and exact. Scroll back to it; don't re-fetch it and don't Read the file. The bytes it freed went into source you have not seen yet, elsewhere in the same response.
 
+## Oversized source files
+
+- Source files above 1 MiB are skipped by default. If a skipped file is hand-authored source required for the task, raise the cap before indexing or MCP startup with \`CODEGRAPH_MAX_FILE_SIZE_BYTES=<bytes>\`, run \`codegraph sync <repo>\`, then re-check status. Do not raise it for generated bundles or vendored blobs.
+
 ## Limitations
 
 - If a tool reports a project isn't indexed (no \`.codegraph/\`), stop calling codegraph tools for that project for the rest of the session and use your built-in tools there instead. Indexing is the user's decision — mention they can run \`codegraph init\` if it comes up, but don't run it yourself.
