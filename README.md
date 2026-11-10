@@ -2,6 +2,24 @@
 
 # CodeGraph
 
+> **About this copy:** this is a personal fork of [CochranResearchGroup/codegraph](https://github.com/CochranResearchGroup/codegraph). The original project's documentation continues below.
+
+**In one sentence:** CodeGraph builds a searchable map of a codebase (files, functions and how they call each other) so AI coding assistants can find the right code quickly.
+
+**Who it is for:** Developers using AI coding assistants on large codebases.
+
+**How it works:**
+
+```mermaid
+flowchart LR
+    Code[Your source code] --> CG[CodeGraph]
+    CG --> Map[(Map of files, functions, calls)]
+    AI[AI assistant] -->|where is X?| Map
+```
+
+---
+
+
 Already installed? Run `codegraph upgrade`
 
 Follow [@getcodegraph](https://x.com/getcodegraph) on X for updates.
